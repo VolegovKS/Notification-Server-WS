@@ -10,9 +10,25 @@ using System.Net.WebSockets;
 using System.Collections.Generic;
 using System.Threading;
 using System.Text;
+using System.IO;
+using Newtonsoft.Json;
 
 namespace NotificationServerWS
 {
+    public class NotificationItem
+    {
+        public string urlws;
+        public string callid;
+        public string cmd;
+        public string ext;
+        public string phone;
+        public string type;
+        public string duration;
+        public string link;
+        public string status;
+        public string clientFio;
+    }
+
     public class Startup
     {
         // список всех клиентов
@@ -38,7 +54,34 @@ namespace NotificationServerWS
             app.UseWebSockets(wsOptions);
             app.Use(async (context, next) =>
             {
-                // принять запрос только по пути /send
+                // принять http-запрос
+                if (context.Request.Path == "/httpsend")
+                {
+                    // URL для обращения к WebSocket
+                    string urlWS = "";
+                    // входящий JSON
+                    string inputJSON = "";
+
+                    // считывание содержимого тела запроса в inputJSON
+                    using (StreamReader stream = new StreamReader(context.Request.Body))
+                    {
+                        inputJSON = await stream.ReadToEndAsync();
+                    }
+
+                    // десериализация JSON для получения значения ключа urlws
+                    NotificationItem item = JsonConvert.DeserializeObject<NotificationItem>(inputJSON);
+                    // получение значения urlws и запись в переменную
+                    urlWS = item.urlws;
+
+                    using var ws = new ClientWebSocket();
+                    // подключение к WS по переданному в http-запросе URL
+                    await ws.ConnectAsync(new Uri(urlWS), CancellationToken.None);
+                    // отправка JSON в WebSocket
+                    await ws.SendAsync(new ArraySegment<byte>(Encoding.UTF8.GetBytes($"{inputJSON}")), WebSocketMessageType.Text, true, System.Threading.CancellationToken.None);
+                    // закрытие соединения
+                    await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "closing after sending", CancellationToken.None);
+                }
+                // принять запрос по пути /send
                 if (context.Request.Path == "/send")
                 {
                     // если запрос является запросом веб сокета
